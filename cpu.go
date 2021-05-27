@@ -26,6 +26,8 @@ type Chip8 struct {
 
 	//Hex based keypad to store the current state of the key
 	Key [16]uint16
+
+	DrawFlag bool
 }
 
 
@@ -45,8 +47,8 @@ func(c *Chip8) Init(){
 
 func(c *Chip8) Cycle(){
 	c.Opcde = c.Fetch(c.pc)
-	x := c.Opcode & 0x0F00
-	y := c.Opcode & 0x00F0
+	x := (c.Opcode & 0x0F00) >> 8
+	y := (c.Opcode & 0x00F0) >> 4
 
 	switch c.Opcode & 0xF000{
 
@@ -56,8 +58,8 @@ func(c *Chip8) Cycle(){
 
 		//calls subroutine at NNN
 		case 0x2000:
-			c.Stack[c.Sp] =c.PC
 			c.Sp += 1
+			c.Stack[c.Sp] =c.PC
 			c.PC = c.Opcode & 0x0FFF
 		
 		case 0x3000:
@@ -187,8 +189,84 @@ func(c *Chip8) Cycle(){
 			c.Register[x] = uint8(math.Intn(256)) & uint8(c.Opcode &  0x00FF)
 			c.Increment()
 
-		//case 0xD000:
+		case 0xD000:
+			height := c.Opcode & 0x000f
+			for ycord := uint16(0); ycord < height; ycord++{
+				pix := c.Memory[c.Index + ycord]
+				for xcord := uint16(0); xcord < 8; xcord++{
+					if (pix &(0x80 >> xcord)) != 0{
+						if c.Graphics[y + uint8(ycord)][x + uint8(xcord)] ==1{
+							c.Register[0xf] =1
+						}
+						c.Graphics[y + uint8(ycord)][x + uint8(xcord)]  ^= 1
+					}
+				}
+			}
 
+			c.DrawFlag = true
+			c.Increment()
+
+		
+		case 0xE000:
+			switch c.Opcode & 0x00ff{
+				case 0x009e:
+					if c.Key[c.Register[x]] == 1{
+						c.PC += 4
+					} else{
+						c.Increment()
+					}
+				
+				case 0x00a1:
+					if c.Key[c.Register[x]] == 0{
+						c.PC += 4
+					} else{
+						c.Increment()
+					}
+
+			}
+
+		case 0xf000:
+			switch c.Opcode & 0x00ff{
+				
+				case 0x0007:
+					c.Register[x] = c.Delay
+					c.Increment()
+
+				case 0x0015:
+					c.Delay = c.Register[x]
+					c.Increment()
+
+				case 0x0018:
+					c.SoundTimer = c.Register[x]
+					c.Increment()
+
+				case 0x001e:
+					c.Index += c.Register[x]
+					c.Increment()
+
+				case 0x0029:
+					c.Index = uint16(c.Register[x]) * 0x5
+					c.Increment()
+
+				case 0x0033:
+					c.Memory[c.Index] = c.Register[x]/100
+					c.Memory[c.Index+1] = (c.Register[x] /10) % 10
+					c.Memory[c.Index+1] = (c.Register[x] /100) % 100
+					c.Increment()
+
+				case 0x0055:
+					for  i:=uint16(0); i< x; i++{
+						c.memory[c.Index + i] = c.Register[i]
+					}
+					c.Increment()
+
+				case 0x0065:
+					for i := uint16(0); i < x; i++{
+						c.Register[i] = c.Memory[c.Index +i]
+						c.Increment()
+					}
+					
+			}
 	}
 }
 
