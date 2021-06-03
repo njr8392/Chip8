@@ -3,7 +3,7 @@ package cpu
 import (
 	"fmt"
 	"io"
-	"math"
+	"math/rand"
 	"os"
 )
 
@@ -28,7 +28,7 @@ type Chip8 struct {
 
 	//Graphic system for the chip8
 	//Pixels are either on or off and the screen has a total of 2048 pixels
-	Graphics [62 * 32]byte
+	Graphics [64 * 32]byte
 
 	//Delay timer for instructions.  If the timer value is zero, it will stay zero.
 	//Otherwise it will decrease at a rate of 60Hz
@@ -71,21 +71,19 @@ var fontset = []byte{
 }
 
 //Fetch gets two bytes (one opcode) from memory and returns the opcode
-func (c *Chip8) Fetch(index uint8) uint16 {
+func (c *Chip8) Fetch(index uint16) uint16 {
 	return uint16(c.Memory[index])<<8 | uint16(c.Memory[index+1])
 }
 
 func Init() *Chip8 {
 	var buf [4096]byte
 	for i, font := range fontset {
-		buf[FONTSET_STARTADDRESS+i] = fontset
+		buf[FONTSET_STARTADDRESS+i] = font
 	}
-	return &Chip8{c.PC: STARTADDRESS,
-		c.Memory: buf,
+
+	return &Chip8{PC: STARTADDRESS,
+		Memory: buf,
 	}
-	/*c.Opcode = 0
-	c.Index = 0
-	c.Sp = 0 */
 
 }
 
@@ -99,11 +97,12 @@ func (c *Chip8) Cycle() {
 	}
 
 	if c.SoundTimer > 0 {
-		c.Soundtimer--
+		c.SoundTimer--
 	}
 }
 
 //ParseOP determines the instruction and executes it.
+//NEED TO ADD BREAKS AFTER EVERY CASE
 func (c *Chip8) ParseOP() {
 	x := (c.Opcode & 0x0F00) >> 8
 	y := (c.Opcode & 0x00F0) >> 4
@@ -143,16 +142,12 @@ func (c *Chip8) ParseOP() {
 		}
 
 	case 0x5000:
-		x := c.Opcode & 0x0F00
-		y := c.Opcode & 0x00F0
-
 		if c.Register[x>>8] == c.Register[y>>4] {
 			c.PC += 2
 		}
 
 	case 0x6000:
-		x := c.Opcode & 0x0F00
-		c.Register[x>>8] == uint8(c.Opcode&0x00FF)
+		c.Register[x>>8] = uint8(c.Opcode & 0x00FF)
 
 	case 0x7000:
 		c.Register[c.Opcode&0x0F00>>8] += byte(c.Opcode & 0x00FF)
@@ -198,7 +193,7 @@ func (c *Chip8) ParseOP() {
 		case 0x0006:
 			//Set Register F  to the least significant bit of Register x then divide Register x by 2
 			c.Register[0xF] = c.Register[x] & 0x1
-			c.Register[x] >> 1
+			c.Register[x] >>= 1
 
 		case 0x0007:
 			// Set Register x to RegY - RegX and Register y to based on the comparison of Regy > Regx
@@ -212,7 +207,7 @@ func (c *Chip8) ParseOP() {
 		case 0x00E:
 			// Set Register F to the most significant bit of x and double Register of x
 			c.Register[0xF] = c.Register[x] >> 7
-			C.Register[x] << 1
+			c.Register[x] <<= 1
 
 		default:
 			fmt.Printf("Unrecognizable opcode %x\n", c.Opcode)
@@ -230,10 +225,10 @@ func (c *Chip8) ParseOP() {
 
 	case 0xB000:
 		// 0xBNNN jumps to address NNN plus Register0
-		c.PC = c.Opcode&0x0FFF + uint16(Register[0])
+		c.PC = c.Opcode&0x0FFF + uint16(c.Register[0])
 
 	case 0xC000:
-		c.Register[x] = uint8(math.Intn(256)) & uint8(c.Opcode&0x00FF)
+		c.Register[x] = uint8(rand.Intn(256)) & uint8(c.Opcode&0x00FF)
 
 	case 0xD000:
 		height := c.Opcode & 0x000f
@@ -241,10 +236,10 @@ func (c *Chip8) ParseOP() {
 			pix := c.Memory[c.Index+ycord]
 			for xcord := uint16(0); xcord < 8; xcord++ {
 				if (pix & (0x80 >> xcord)) != 0 {
-					if c.Graphics[y+uint8(ycord)][x+uint8(xcord)] == 1 {
+					if c.Graphics[y+ycord+x+xcord] == 1 { /// may have to change this index to wrap 64,,, mod operator?
 						c.Register[0xf] = 1
 					}
-					c.Graphics[y+uint8(ycord)][x+uint8(xcord)] ^= 1
+					c.Graphics[y+ycord+x+xcord] ^= 1
 				}
 			}
 		}
@@ -273,7 +268,7 @@ func (c *Chip8) ParseOP() {
 
 		case 0x000a:
 			for i, key := range c.Key {
-				if c.Key != 0 {
+				if key != 0 {
 					c.Register[x] = byte(i)
 					break
 				}
@@ -287,7 +282,7 @@ func (c *Chip8) ParseOP() {
 			c.SoundTimer = c.Register[x]
 
 		case 0x001e:
-			c.Index += c.Register[x]
+			c.Index += uint16(c.Register[x])
 
 		case 0x0029:
 			c.Index = uint16(c.Register[x]) * 0x5
@@ -299,7 +294,7 @@ func (c *Chip8) ParseOP() {
 
 		case 0x0055:
 			for i := uint16(0); i < x; i++ {
-				c.memory[c.Index+i] = c.Register[i]
+				c.Memory[c.Index+i] = c.Register[i]
 			}
 
 		case 0x0065:
@@ -325,7 +320,7 @@ func (c *Chip8) LoadROM(file string) error {
 
 	buf := make([]byte, stat.Size())
 
-	_, err := f.Read(buf)
+	_, err = f.Read(buf)
 	if err != nil || err != io.EOF {
 		return err
 	}
