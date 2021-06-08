@@ -2,7 +2,6 @@ package cpu
 
 import (
 	"fmt"
-	"io"
 	"math/rand"
 	"os"
 )
@@ -51,7 +50,7 @@ const (
 )
 
 //sprites are represented as 5 bytes where each bit represents a pixel and are reserved in memory from starting at 0x50
-var fontset = []byte{
+var fontset = [80]byte{
 	0xF0, 0x90, 0x90, 0x90, 0xF0, //0
 	0x20, 0x60, 0x20, 0x20, 0x70, //1
 	0xF0, 0x10, 0xF0, 0x80, 0xF0, //2
@@ -90,7 +89,11 @@ func Init() *Chip8 {
 //Cycle mimicks the the cpu cycle of fetch decode and execute
 func (c *Chip8) Cycle() {
 	c.Opcode = c.Fetch(c.PC)
+	fmt.Printf("%x\n", c.Opcode)
 	c.PC += 2
+	fmt.Println(c.PC)
+	c.DrawFlag = false
+	c.ParseOP()
 
 	if c.Delay > 0 {
 		c.Delay--
@@ -112,7 +115,8 @@ func (c *Chip8) ParseOP() {
 	case 0x0000:
 		switch c.Opcode & 0x00FF {
 		case 0x00e0:
-			c.Graphics = [64 * 32]byte{}
+			c.Graphics = [64*32]byte{}
+			c.DrawFlag = true
 
 		case 0x00ee:
 			c.Sp--
@@ -236,10 +240,10 @@ func (c *Chip8) ParseOP() {
 			pix := c.Memory[c.Index+ycord]
 			for xcord := uint16(0); xcord < 8; xcord++ {
 				if (pix & (0x80 >> xcord)) != 0 {
-					if c.Graphics[y+ycord+x+xcord] == 1 { /// may have to change this index to wrap 64,,, mod operator?
+					if c.Graphics[x+xcord +((y+ycord) *64)] == 1 { /// may have to change this index to wrap 64,,, mod operator?
 						c.Register[0xf] = 1
 					}
-					c.Graphics[y+ycord+x+xcord] ^= 1
+					c.Graphics[x+xcord +((y+ycord) *64)] ^= 1
 				}
 			}
 		}
@@ -313,21 +317,29 @@ func (c *Chip8) LoadROM(file string) error {
 		return err
 	}
 
-	stat, err := f.Stat()
-	if err != nil {
+	info, err := f.Stat()
+	if err != nil{
 		return err
 	}
+	buf := make([]byte, info.Size())
 
-	buf := make([]byte, stat.Size())
-
-	_, err = f.Read(buf)
-	if err != nil || err != io.EOF {
-		return err
-	}
+	f.Read(buf)
 
 	for i, bytes := range buf {
 		c.Memory[STARTADDRESS+i] = bytes
 	}
 
 	return nil
+}
+
+func (c *Chip8)ChangeKey(char byte, down bool){
+	c.Key[char] =0
+	if down{
+		c.Key[char] =1
+	}
+}
+func (c *Chip8) Draw() bool {
+	sd := c.DrawFlag
+	c.DrawFlag = false
+	return sd
 }
