@@ -89,9 +89,7 @@ func Init() *Chip8 {
 //Cycle mimicks the the cpu cycle of fetch decode and execute
 func (c *Chip8) Cycle() {
 	c.Opcode = c.Fetch(c.PC)
-	fmt.Printf("%x\n", c.Opcode)
 	c.PC += 2
-	fmt.Println(c.PC)
 	c.DrawFlag = false
 	c.ParseOP()
 
@@ -120,7 +118,7 @@ func (c *Chip8) ParseOP() {
 
 		case 0x00ee:
 			c.Sp--
-			c.PC = c.Stack[c.Sp] // +2 here??
+			c.PC = c.Stack[c.Sp]  // +2 here??
 		}
 
 	//jumps to address NNN
@@ -146,12 +144,12 @@ func (c *Chip8) ParseOP() {
 		}
 
 	case 0x5000:
-		if c.Register[x>>8] == c.Register[y>>4] {
+		if c.Register[x] == c.Register[y] {
 			c.PC += 2
 		}
 
 	case 0x6000:
-		c.Register[x>>8] = uint8(c.Opcode & 0x00FF)
+		c.Register[x] = uint8(c.Opcode & 0x00FF)
 
 	case 0x7000:
 		c.Register[c.Opcode&0x0F00>>8] += byte(c.Opcode & 0x00FF)
@@ -178,12 +176,11 @@ func (c *Chip8) ParseOP() {
 		case 0x0004:
 			// if Vx + Vy > 255, then set regiters accordingly and store lowest 8 bits in Vx
 			c.Register[0xF] = 0
-
-			if c.Register[y] > (0xFF - c.Register[x]) {
+			sum := uint16(c.Register[y] + c.Register[x])
+			if sum > 255{
 				c.Register[0xF] = 1
 			}
-
-			c.Register[x] += c.Register[y]
+			c.Register[x] = byte(sum & 0xff)
 
 		case 0x0005:
 			// set VF to 1 if a carry occurs and subtract Vy from Vx
@@ -208,9 +205,9 @@ func (c *Chip8) ParseOP() {
 
 			c.Register[x] = c.Register[y] - c.Register[x]
 
-		case 0x00E:
+		case 0x000E:
 			// Set Register F to the most significant bit of x and double Register of x
-			c.Register[0xF] = c.Register[x] >> 7
+			c.Register[0xF] = (c.Register[x] & 0x80) >> 7
 			c.Register[x] <<= 1
 
 		default:
@@ -239,6 +236,9 @@ func (c *Chip8) ParseOP() {
 		for ycord := uint16(0); ycord < height; ycord++ {
 			pix := c.Memory[c.Index+ycord]
 			for xcord := uint16(0); xcord < 8; xcord++ {
+				if x+xcord +((y+ycord) *64) >= uint16(len(c.Graphics)){
+					continue
+				}
 				if (pix & (0x80 >> xcord)) != 0 {
 					if c.Graphics[x+xcord +((y+ycord) *64)] == 1 { /// may have to change this index to wrap 64,,, mod operator?
 						c.Register[0xf] = 1
